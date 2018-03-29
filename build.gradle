@@ -1,0 +1,192 @@
+//项目路径及版本
+def group = 'cn.com.inhand.project.gehc.aplus.common'
+def version = '0.0.1'
+
+buildscript {
+    repositories {
+        mavenLocal()
+        maven { url 'http://repo.spring.io/plugins-release' }
+        maven { url "https://plugins.gradle.org/m2/" }
+    }
+    dependencies {
+        classpath 'org.springframework.build.gradle:propdeps-plugin:0.0.6'
+        classpath "org.springframework.boot:spring-boot-gradle-plugin:1.5.9.RELEASE"
+        classpath "com.sarhanm:gradle-versioner:2.3.14"
+        classpath "gradle.plugin.com.gorylenko.gradle-git-properties:gradle-git-properties:1.4.17"
+    }
+}
+
+defaultTasks 'daily', 'clean', 'uploadArchives'
+
+//公共配置
+subprojects {
+    apply plugin: 'java'
+    apply plugin: 'idea'
+    //apply plugin: 'application'
+    apply plugin: 'maven'
+
+    sourceCompatibility = 1.8
+    targetCompatibility = 1.8
+    compileJava.options.encoding = 'UTF-8'
+
+    repositories {
+        jcenter()
+        mavenCentral()
+        mavenLocal()
+    }
+
+    dependencies {
+        compile('org.springframework:spring-jdbc:4.0.0.RELEASE')
+        compile('com.fasterxml.jackson.core:jackson-core:2.4.0')
+        compile('com.fasterxml.jackson.core:jackson-databind:2.4.0')
+        compile('org.projectlombok:lombok:1.16.+')
+        compile('mysql:mysql-connector-java:5.1.42')
+        compile files('../libs/ihtools-1.5.1-SNAPSHOT.jar')
+    }
+
+    jar {
+        baseName = project.name
+    }
+    def v = getVersion()
+    jar.manifest.attributes.put 'Implementation-Version', v
+    jar.manifest.attributes.put 'Implementation-Title', project.name
+
+    def homedir = System.getenv()['HOME']
+
+    uploadArchives {
+        if (homedir == null) {
+            homedir = System.getenv()['HOMEDRIVE'] + System.getenv()['HOMEPATH']
+        }
+        println('-----maven home:' + homedir + ': ' + group + ":" + project.name + ":" + version)
+        repositories {
+            mavenDeployer {
+                repository(url: 'file://localhost/' + homedir + '/.m2/repository/')
+                pom.version = version
+                pom.artifactId = project.name
+                pom.groupId = group
+            }
+        }
+    }
+
+    configurations {
+        provided
+    }
+
+    sourceSets {
+        main.compileClasspath += configurations.provided
+        test.compileClasspath += configurations.provided
+        test.runtimeClasspath += configurations.provided
+    }
+}
+
+// - project('') 除该项目，其余项目均配置
+configure(subprojects - project(':db-tools')) {
+    dependencies {
+        provided project(':db-tools')
+    }
+}
+
+//单独配置
+project(':db-tools') {
+    dependencies {
+        provided('javax.servlet:servlet-api:2.5')
+        provided('org.springframework:spring-webmvc:4.0.0.RELEASE')
+        compile('org.apache.poi:poi:3.9')
+        compile('org.bouncycastle:bcprov-jdk16:1.46')
+        provided('org.springframework:spring-jdbc:4.0.0.RELEASE')
+    }
+}
+
+task verification {
+    doFirst {
+        subprojects.each {
+            if (it.name != 'project-settings') {
+                def c = "Build for verification"
+                println("Cloud_service.gradle.verification(): submodule=" + it.name + ".")
+                createVersionDesc(it.name, c)
+            }
+        }
+    }
+}
+
+task daily {
+    doFirst {
+        subprojects.each {
+            if (it.name != 'project-settings') {
+                def c = "Daily build"
+                createVersionDesc(it.name, c)
+            }
+        }
+    }
+}
+
+def createVersionDesc(moduleName, c) {
+    def t = getBuildTime()
+    def v = getVersion()
+    def b = getCurrentBranch()
+    writeVersionDesc(moduleName, v, t, c, b)
+    print("moudleName:" + moduleName + ",comment:" + c + "\n")
+}
+
+task testMyWork << {
+    getVersion()
+    def t = getBuildTime()
+    print("timestamp：" + t)
+}
+
+def getVersion() {
+    def proc = "git rev-parse HEAD".execute()
+    proc.waitFor()
+    def r = proc.in.text.replace("\n", "")
+    return r
+}
+
+def getBuildTime() {
+    return new Date().format("yyyy-MM-dd HH:mm:ss")
+}
+
+def getCurrentBranch() {
+    def proc = "git symbolic-ref --short -q HEAD".execute()
+    proc.waitFor()
+    def r = proc.in.text.replace("\n", "")
+    return r
+}
+
+def writeVersionDesc(moduleName, versionId, buildTs, comment, branch) {
+//	def  cmd = 'mkdir -p '+moduleName + '/src/main/resources/static'
+//	def proc = cmd.execute()
+//	proc.waitFor()
+    def file = new File(moduleName + '/src/main/resources/static/version.json')
+    //if (file.exists())
+    //file.delete()
+
+    def printWriter = file.newPrintWriter()
+    printWriter.write("{\"version\":\"" + versionId + "\","
+            + "\"build_time\":\"" + buildTs + "\","
+            + "\"branch\":\"" + branch + "\","
+            + "\"comment\":\"" + comment + "\"}")
+    printWriter.flush()
+    printWriter.close()
+
+
+    file = new File(moduleName + '/src/main/resources/application.properties')
+    //if (file.exists())
+    //file.delete()
+    /*
+    product.build.version=24647b8
+    product.build.time=2017-06-25 16:27:55
+    product.build.branch=Dev
+    product.build.comment=Build for verification
+     */
+
+    printWriter = file.newPrintWriter()
+    printWriter.write("product.build.version=" + versionId + "\n"
+            + "product.build.time=" + buildTs + "\n"
+            + "product.build.branch=" + branch + "\n"
+            + "product.build.comment=" + comment + "\n")
+    printWriter.flush()
+    printWriter.close()
+}
+
+// windows 下构建
+// gradle clean build uploadArchives

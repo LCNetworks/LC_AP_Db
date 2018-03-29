@@ -1,0 +1,22 @@
+*.class
+.idea/
+.gradle/
+classes/
+db-tools/build/
+*/build/
+*/out/*
+version.json
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
